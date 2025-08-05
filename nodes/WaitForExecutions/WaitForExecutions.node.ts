@@ -15,7 +15,7 @@ interface WaitForAllMetadata extends IDataObject {
 
 export class WaitForExecutions implements INodeType {
 	description: INodeTypeDescription = {
-		displayName: 'Wait For Executions',
+		displayName: 'WaitForExecutions',
 		name: 'waitForExecutions',
 		group: ['transform'],
 		version: 1,
