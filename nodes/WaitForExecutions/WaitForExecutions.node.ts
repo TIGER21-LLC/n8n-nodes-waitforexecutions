@@ -13,7 +13,7 @@ interface WaitForAllMetadata extends IDataObject {
 	// ...other metadata properties if needed...
 }
 
-export class WaitForExecutionsNode implements INodeType {
+export class WaitForExecutions implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Wait For Executions',
 		name: 'waitForExecutions',
