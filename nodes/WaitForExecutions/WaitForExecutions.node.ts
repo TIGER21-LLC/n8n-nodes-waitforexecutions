@@ -26,8 +26,9 @@ interface WaitForAllMetadata extends IDataObject {
 
 export class WaitForExecutions implements INodeType {
 	description: INodeTypeDescription = {
-		displayName: 'WaitForExecutions',
+		displayName: 'Wait For Executions',
 		name: 'waitForExecutions',
+		icon: 'file:waitForExecutions.svg',
 		group: ['transform'],
 		version: 1,
 		description: 'Waits for sub-workflow executions to complete before proceeding',
