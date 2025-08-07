@@ -1,16 +1,27 @@
-import {
+import type {
 	IDataObject,
 	IExecuteFunctions,
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
+	JsonObject
+} from 'n8n-workflow';
+import {
+	NodeApiError,
 	NodeConnectionTypes
 } from 'n8n-workflow';
 
+type N8nApiCredentials = {
+	apiKey: string;
+	baseUrl: string;
+};
+
 interface WaitForAllMetadata extends IDataObject {
-	executionId?: string;
-	attempts: number;
-	// ...other metadata properties if needed...
+	subExecution?: {
+		executionId: string;
+		workflowId: string;
+	} | null; // subExecution can be null if not set
+	attempts?: number;
 }
 
 export class WaitForExecutions implements INodeType {
@@ -21,11 +32,25 @@ export class WaitForExecutions implements INodeType {
 		version: 1,
 		description: 'Waits for sub-workflow executions to complete before proceeding',
 		defaults: {
-			name: 'WaitForExecutions',
+			name: 'Wait For Executions',
 		},
 		inputs: [NodeConnectionTypes.Main],
 		outputs: [NodeConnectionTypes.Main, NodeConnectionTypes.Main, NodeConnectionTypes.Main],
 		outputNames: ['done', 'failed', 'processing'],
+		credentials: [
+			{
+				name: 'n8nApi',
+				required: true,
+			},
+		],
+		requestDefaults: {
+			returnFullResponse: true,
+			baseURL: '={{ $credentials.baseUrl.replace(new RegExp("/$"), "") }}',
+			headers: {
+				Accept: 'application/json',
+				'Content-Type': 'application/json',
+			},
+		},
 		properties: [
 			{
 				displayName: 'Wait For All Executions',
@@ -44,7 +69,7 @@ export class WaitForExecutions implements INodeType {
 				description: 'Whether to wait for all executions to complete before passing output to done or pass items one by one as theyre finished?',
 			},
 			{
-				displayName: 'Execution Timeout',
+				displayName: 'Execution Timeout (Seconds)',
 				name: 'execution_timeout',
 				type: 'number',
 				default: 1,
@@ -60,122 +85,165 @@ export class WaitForExecutions implements INodeType {
 		const processingItems: INodeExecutionData[] = [];
 
 		const waitForAll = this.getNodeParameter('wait_for_all', 0, false) as boolean;
-		// const retryLimit = this.getNodeParameter('retry_limit', 0, 5) as number;
-		// const executionTimeout = this.getNodeParameter('execution_timeout', 0, 1) as number;
+		const retryLimit = this.getNodeParameter('retry_limit', 0, 5) as number;
+		const executionTimeout = this.getNodeParameter('execution_timeout', 0, 1) as number;
 
 		const items = this.getInputData();
 
-		const statusResults: Array<{ item: INodeExecutionData, status: string, outputData?: INodeExecutionData[][] }> = [];
+		const statusResults: Array<{ item: INodeExecutionData; status: string; output_data?: any }> = [];
 
 		for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
 			const item = items[itemIndex];
-			const metadata = item.json.metadata as WaitForAllMetadata || { attempts: 0 };
 
-			const executionId = metadata.executionId ?? null;
+			let status: 'done' | 'failed' | 'processing' = 'processing';
+			let output_data: any = undefined;
 
+			const metadata = item.metadata as WaitForAllMetadata || { attempts: 0 };
+
+			// Step 1: Check if we have a sub-execution ID
+			const executionId = metadata.subExecution?.executionId ?? null;
 			if (!executionId) {
-				failedItems.push(item);
+				status = 'failed';
+				output_data = {
+					error: 'No sub-execution ID found in item metadata. Cannot proceed.'
+				};
+				statusResults.push({ item, status, output_data });
 				continue;
 			}
 
-			let status: 'done' | 'failed' | 'processing' = 'processing';
-			let outputData: INodeExecutionData[][] | undefined;
-			// let timedOut = false;
+			item.json.execution_id = executionId;
 
-			// Get and increment attempts
+			// Step 2: Get and increment attempts
 			let attempts = metadata.attempts ?? 0;
-			attempts++;
-			item.json.metadata = {
-				...metadata,
-				attempts,
+			(item.metadata as WaitForAllMetadata).attempts = ++attempts;
+
+
+			// Step 3: Check if we exceeded retry limit
+			if( attempts > retryLimit) {
+				status = 'failed';
+				output_data = {
+					error: `Execution with ID ${executionId} exceeded retry limit of ${retryLimit}. Attempts: ${attempts}`
+				};
+				statusResults.push({ item, status, output_data });
+				continue;
+			}
+
+			// GOOD TO PROCEED
+
+			// Step 4: Get Execution Summary from n8n API
+			const credentials = await this.getCredentials<N8nApiCredentials>('n8nApi');
+			const baseUrl = credentials.baseUrl;
+
+			const options = {
+				url: `${baseUrl.replace(new RegExp('/$'), '')}/executions/${executionId}`,
+				method: 'GET' as const,
+				qs: {
+					includeData: true
+				},
+				json: true,
 			};
 
+			let execution;
+
 			try {
-				const workflowRunData = await this.getExecutionDataById(executionId);
-				this.logger.info(`[WaitForAll] ExecutionData for ID: ${executionId}.`, {
-					workflowRunData
-				});
-				status = 'done';
-				// status = (() => {
-				// 	switch (workflowRunData?.status) {
-				// 		case 'canceled':
-				// 		case 'crashed':
-				// 		case 'error':
-				// 			return 'failed';
-				// 		case 'new':
-				// 		case 'running':
-				// 		case 'unknown':
-				// 		case 'waiting':
-				// 			return 'processing';
-				// 		case 'success':
-				// 			return 'done';
-				// 		default:
-				// 			return 'failed';
-				// 	}
-				// })();
-				// outputData = workflowRunData.data as INodeExecutionData[][];
-				// // Check executionTimeout (in minutes)
-				// if (status === 'processing' && workflowRunData.startedAt) {
-				// 	const startedAt = new Date(workflowRunData.startedAt).getTime();
-				// 	const now = Date.now();
-				// 	const diffMinutes = (now - startedAt) / (1000 * 60);
-				// 	if (diffMinutes >= executionTimeout) {
-				// 		timedOut = true;
-				// 	}
-				// }
-			} catch (e) {
-				status = 'failed';
+				execution = await this.helpers.httpRequestWithAuthentication.call(this, 'n8nApi', options);
+			} catch (error) {
+				if (error instanceof NodeApiError) {
+					throw error;
+				}
+				throw new NodeApiError(this.getNode(), error as JsonObject);
 			}
 
-			// if ((attempts >= retryLimit && status !== 'done') || (timedOut && status === 'processing')) {
-			// 	status = 'failed';
-			// }
+			// Step 5: Check if execution exists
 
-			statusResults.push({ item, status, outputData });
+			if (!execution) {
+				status = 'failed';
+				output_data = {
+					error: `Execution with ID ${executionId} not found.`
+				};
+				statusResults.push({ item, status, output_data });
+				continue;
+			}
+
+			const extractNodeOutput = (data: any) => {
+				try {
+					return data[0].data.main[0];
+				} catch (e) {
+					return data;
+				}
+			}
+
+			// Step 6: Check execution status and determine output
+			switch (execution.status) {
+				case 'success':
+					status = 'done';
+					output_data = {
+						data: execution.data.resultData.lastNodeExecuted ? extractNodeOutput(execution.data.resultData.runData[execution.data.resultData.lastNodeExecuted]) : []
+					}
+					break;
+				case 'canceled':
+				case 'crashed':
+				case 'error':
+					status = 'failed';
+					output_data = {
+						error: `Execution with ID ${executionId} failed. Status: ${execution.status}`,
+						data: execution.data.resultData.error
+					};
+					break;
+				case 'running':
+				case 'new':
+				case 'waiting':
+				case 'unknown':
+					// Check timeout if still processing/unknown
+					if (execution.startedAt) {
+						const startedAt = new Date(execution.startedAt).getTime();
+						const now = Date.now();
+						const timeoutMs = executionTimeout * 1000; // Convert Seconds to milliseconds
+						if (now - startedAt > timeoutMs) {
+							output_data = {
+								error: `Execution timed out after ${executionTimeout} second(s).`
+							};
+							status = 'failed';
+						} else {
+							status = 'processing';
+						}
+					} else {
+						status = 'processing';
+					}
+					break;
+				default:
+					status = 'processing';
+			}
+
+			statusResults.push({ item, status, output_data });
 		}
 
-		if (waitForAll) {
-			const allDone = statusResults.every(r => r.status === 'done');
-			const anyFailed = statusResults.some(r => r.status === 'failed');
-			if (allDone) {
-				for (const { item, outputData } of statusResults) {
-					const out = { json: {
-							...item.json, executionOutput: outputData
-						}
-					};
-					doneItems.push(out);
-				}
-			} else if (anyFailed) {
-				for (const { item, status, outputData } of statusResults) {
-					if (status === 'failed') {
-						const out = { json: {
-								...item.json, executionOutput: outputData
-							}
-						};
-						failedItems.push(out);
+		const allDone = statusResults.every(r => r.status === 'done' || r.status === 'failed');
+
+		for (const { item, status, output_data } of statusResults) {
+			// put it in the right output array, based on status, waitForAll and allDone
+			if (output_data) {
+				item.json.execution_output = output_data;
+			}
+			if (waitForAll) {
+				// Only output when all executions are done or failed
+				if (allDone) {
+					if (status === 'done') {
+						doneItems.push(item);
+					} else if (status === 'failed') {
+						failedItems.push(item);
 					}
+				} else {
+					processingItems.push(item);
 				}
 			} else {
-				for (const { item, outputData } of statusResults) {
-					const out = { json: {
-							...item.json, executionOutput: outputData
-						}
-					};
-					processingItems.push(out);
-				}
-			}
-		} else {
-			for (const { item, status, outputData } of statusResults) {
-				const out = { json: {
-						...item.json, executionOutput: outputData
-					}
-				};
+				// Output items as soon as they're finished
 				if (status === 'done') {
-					doneItems.push(out);
+					doneItems.push(item);
 				} else if (status === 'failed') {
-					failedItems.push(out);
+					failedItems.push(item);
 				} else {
-					processingItems.push(out);
+					processingItems.push(item);
 				}
 			}
 		}

@@ -1,0 +1,18 @@
+{
+	"node": "n8n-nodes-base.WaitForExecutions",
+	"nodeVersion": "0.2",
+	"codexVersion": "1.0",
+	"categories": ["Development", "Developer Tools"],
+	"resources": {
+		"credentialDocumentation": [
+			{
+				"url": "https://docs.n8n.io/api/authentication/"
+			}
+		],
+		"primaryDocumentation": [
+			{
+				"url": "https://github.com/TIGER21-LLC/n8n-nodes-waitforexecutions?tab=readme-ov-file#-features"
+			}
+		]
+	}
+}

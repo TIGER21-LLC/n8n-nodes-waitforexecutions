@@ -1,6 +1,6 @@
 {
   "name": "@tiger21/n8n-nodes-waitforexecutions",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "private": false,
   "description": "n8n node to wait for executions to finish",
   "keywords": [
