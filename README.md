@@ -9,7 +9,7 @@ A robust n8n Community Node for orchestrating and synchronizing sub-workflow exe
 ### ⏱️ **Wait For Executions Node**
 - **Sub-Workflow Synchronization**: Waits for one or multiple sub-workflow executions to finish before proceeding.
 - **Configurable Retry & Timeout**: Set retry limits and execution timeouts for robust error handling.
-- **Multi-Output Routing**: Routes items to `done`, `failed`, or `processing` outputs based on execution status.
+- **Multi-Output Routing**: Routes items to `done` or `failed` outputs based on execution status.
 - **API Integration**: Uses n8n API credentials to fetch execution status and results.
 - **Detailed Error Reporting**: Provides clear error messages and output data for failed executions.
 - **TypeScript Support**: Full type safety and IntelliSense.
@@ -21,7 +21,7 @@ To truly get parallelization out of n8n queue mode, your main workflow must cont
 If you set "Wait for Completion" to false, all sub-workflows are triggered at once, maximizing worker usage. But then, your main workflow can't access the sub-workflow outputs directly.
 
 **WaitForExecutions solves this problem.**  
-Place it after "Execute Sub-Workflow" (with "Wait for Completion" = false). This node checks the status of each execution and routes items through three outputs: `done`, `failed`, and `processing`. By connecting a "Wait" node to the `processing` output and looping back, you create a smart polling system that advances completed items and keeps checking pending ones—until a retry or timeout limit is reached (both configurable). You can also choose to wait for all executions to complete before moving forward.
+Place it after "Execute Sub-Workflow" (with "Wait for Completion" = false). This node checks the status of each execution and waits for all executions to either complete or fail (including timeout/retry logic). It will keep polling at the configured interval until all executions are resolved, then outputs all items to either the `done` or `failed` outputs. The node itself handles waiting and polling internally.
 
 This approach allows you to fully utilize n8n's queue mode and all available workers, making your workflows much more powerful and efficient.
 
@@ -44,8 +44,6 @@ For more details, see the [n8n Community Nodes documentation](https://docs.n8n.i
 
 ### Problem Solved
 
-Problem Solved
-
 - Wait for all sub-executions to complete before proceeding.
 - Retry status checks with configurable limits.
 - Fail gracefully if executions error, crash, or timeout.
@@ -59,7 +57,6 @@ Problem Solved
 4. **Connect outputs**:
    - `done`: All executions completed successfully.
    - `failed`: One or more executions failed or timed out.
-   - `processing`: Still waiting for executions to finish (loop this back with a "Wait" node).
 
 ### Output Structure
 
@@ -84,9 +81,9 @@ Example:
 
 | Parameter                  | Type    | Default | Description                                                                 |
 |----------------------------|---------|---------|-----------------------------------------------------------------------------|
-| **Wait For All Executions**| Boolean | false   | Wait for all executions to finish before outputting, or emit as each finishes|
-| **Retry Limit**            | Number  | 5       | Number of status checks before considering an execution failed               |
-| **Execution Timeout (s)**  | Number  | 1       | Maximum time (in seconds) to wait for an execution before failing            |
+| **Wait (Seconds)**         | Number  | 5       | Number of seconds to wait before re-checking the status of executions       |
+| **Retry Limit**            | Number  | 0       | Number of status checks before considering an execution failed (0 = infinite)|
+| **Execution Timeout (s)**  | Number  | 0       | Maximum time (in seconds) to wait for an execution before failing (0 = ignore)|
 
 ## 💡 Use Cases
 
@@ -98,7 +95,7 @@ Start Sub-Workflow 3 ──┘
 ```
 
 ### 2. **Batch Processing with Error Handling**
-- Wait for all batch jobs to finish, retrying as needed, and handle failures gracefully.
+- Wait for all batch jobs to finish, rechecking status as needed, and handle failures gracefully.
 
 ### 3. **Timeout-Sensitive Automation**
 - Ensure downstream steps only proceed if all sub-workflows complete within a set time.
