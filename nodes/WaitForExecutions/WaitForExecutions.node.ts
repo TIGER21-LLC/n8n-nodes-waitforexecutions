@@ -65,17 +65,17 @@ export class WaitForExecutions implements INodeType {
 				displayName: 'Retry Limit',
 				name: 'retry_limit',
 				type: 'number',
-				default: 5,
-				placeholder: 'Number of times we should check for execution status before considering the execution failed',
-				description: 'Whether to wait for all executions to complete before passing output to done or pass items one by one as theyre finished?',
+				default: 0,
+				placeholder: 'Maximum number of retries before considering an execution failed. Set to 0 for infinite retries.',
+				description: 'Maximum number of retries before considering an execution failed. Set to 0 for infinite retries.',
 			},
 			{
 				displayName: 'Execution Timeout (Seconds)',
 				name: 'execution_timeout',
 				type: 'number',
-				default: 1,
-				placeholder: 'Maximum execution time allowed before considering an execution failed',
-				description: 'Whether to wait for all executions to complete before passing output to done or pass items one by one as theyre finished?',
+				default: 0,
+				placeholder: 'Maximum execution time before considering an execution failed. Set to 0 to ignore.',
+				description: 'Maximum execution time before considering an execution failed. Set to 0 to ignore.',
 			},
 		],
 	};
@@ -86,8 +86,8 @@ export class WaitForExecutions implements INodeType {
 		const processingItems: INodeExecutionData[] = [];
 
 		const waitForAll = this.getNodeParameter('wait_for_all', 0, false) as boolean;
-		const retryLimit = this.getNodeParameter('retry_limit', 0, 5) as number;
-		const executionTimeout = this.getNodeParameter('execution_timeout', 0, 1) as number;
+		const retryLimit = this.getNodeParameter('retry_limit', 0, 0) as number;
+		const executionTimeout = this.getNodeParameter('execution_timeout', 0, 0) as number;
 
 		const items = this.getInputData();
 
@@ -120,7 +120,7 @@ export class WaitForExecutions implements INodeType {
 
 
 			// Step 3: Check if we exceeded retry limit
-			if( attempts > retryLimit) {
+			if( retryLimit !== 0 && attempts > retryLimit) {
 				status = 'failed';
 				output_data = {
 					error: `Execution with ID ${executionId} exceeded retry limit of ${retryLimit}. Attempts: ${attempts}`
@@ -196,7 +196,7 @@ export class WaitForExecutions implements INodeType {
 				case 'waiting':
 				case 'unknown':
 					// Check timeout if still processing/unknown
-					if (execution.startedAt) {
+					if (executionTimeout !== 0 && execution.startedAt) {
 						const startedAt = new Date(execution.startedAt).getTime();
 						const now = Date.now();
 						const timeoutMs = executionTimeout * 1000; // Convert Seconds to milliseconds
