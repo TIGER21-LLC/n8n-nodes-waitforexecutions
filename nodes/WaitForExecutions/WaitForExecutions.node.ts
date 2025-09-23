@@ -28,7 +28,7 @@ export class WaitForExecutions implements INodeType {
 		icon: 'file:waitForExecutions.svg',
 		group: ['transform'],
 		version: 1,
-		description: 'Waits for sub-workflow executions to complete before proceeding',
+		description: 'Waits for sub-workflow executions to complete before proceeding. Excepts executionId in the input data or metadata.',
 		defaults: {
 			name: 'Wait For Executions',
 		},
@@ -114,12 +114,15 @@ export class WaitForExecutions implements INodeType {
 
 				const metadata = (item.metadata as WaitForExecutionsMetadata) || { attempts: 0 };
 
-				// Step 1: Check if we have a sub-execution ID
-				const executionId = metadata.subExecution?.executionId ?? null;
+				// Step 1: Check if we have an execution ID (prefer item.json.executionId, fallback to metadata.subExecution?.executionId)
+				const executionId =
+					(item.json.executionId as string | undefined) ??
+					(metadata.subExecution?.executionId ?? null);
+
 				if (!executionId) {
 					status = 'failed';
 					output_data = {
-						error: 'No sub-execution ID found in item metadata. Cannot proceed.',
+						error: 'No execution ID found in item input or metadata. Cannot proceed.',
 					};
 					item.json.execution_output = output_data;
 					failedItems.push(item);
