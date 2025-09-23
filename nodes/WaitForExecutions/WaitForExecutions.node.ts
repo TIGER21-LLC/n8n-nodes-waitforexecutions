@@ -19,7 +19,7 @@ export class WaitForExecutions implements INodeType {
 		icon: 'file:waitForExecutions.svg',
 		group: ['transform'],
 		version: 1,
-		description: 'Waits for sub-workflow executions to complete before proceeding. Excepts executionId in the input data or metadata.',
+		description: 'Waits for sub-workflow executions to complete before proceeding. Excepts execution_id in the input data or metadata.',
 		defaults: {
 			name: 'Wait For Executions',
 		},
