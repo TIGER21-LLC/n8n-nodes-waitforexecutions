@@ -1,5 +1,4 @@
 import type {
-	IDataObject,
 	IExecuteFunctions,
 	INodeExecutionData,
 	INodeType,
@@ -12,14 +11,6 @@ type N8nApiCredentials = {
 	apiKey: string;
 	baseUrl: string;
 };
-
-interface WaitForExecutionsMetadata extends IDataObject {
-	subExecution?: {
-		executionId: string;
-		workflowId: string;
-	} | null;
-	attempts?: number;
-}
 
 export class WaitForExecutions implements INodeType {
 	description: INodeTypeDescription = {
@@ -92,10 +83,11 @@ export class WaitForExecutions implements INodeType {
 		let failedItems: INodeExecutionData[] = [];
 		let processingItems: INodeExecutionData[] = items;
 
+		let attempts = 0; // Global attempts counter
+
 		const checkExecutionStatuses = async function checkExecutionStatuses(
 			context: IExecuteFunctions,
 			items: INodeExecutionData[],
-			retryLimit: number,
 			executionTimeout: number,
 		): Promise<{
 			doneItems: INodeExecutionData[];
@@ -112,12 +104,10 @@ export class WaitForExecutions implements INodeType {
 				let status: 'done' | 'failed' | 'processing' = 'processing';
 				let output_data: any = undefined;
 
-				const metadata = (item.metadata as WaitForExecutionsMetadata) || { attempts: 0 };
-
 				// Step 1: Check if we have an execution ID (prefer item.json.executionId, fallback to metadata.subExecution?.executionId)
 				const executionId =
-					(item.json.executionId as string | undefined) ??
-					(metadata.subExecution?.executionId ?? null);
+					(item.json.execution_id as string | undefined) ??
+					(item.metadata?.subExecution?.executionId ?? null);
 
 				if (!executionId) {
 					status = 'failed';
@@ -130,23 +120,6 @@ export class WaitForExecutions implements INodeType {
 				}
 
 				item.json.execution_id = executionId;
-
-				// Step 2: Get and increment attempts
-				let attempts = metadata.attempts ?? 0;
-				(item.metadata as WaitForExecutionsMetadata).attempts = ++attempts;
-
-				// Step 3: Check if we exceeded retry limit
-				if (retryLimit !== 0 && attempts > retryLimit) {
-					status = 'failed';
-					output_data = {
-						error: `Execution with ID ${executionId} exceeded retry limit of ${retryLimit}. Attempts: ${attempts}`,
-					};
-					item.json.execution_output = output_data;
-					failedItems.push(item);
-					continue;
-				}
-
-				// GOOD TO PROCEED
 
 				// Step 4: Get Execution Summary from n8n API
 				const credentials = await context.getCredentials<N8nApiCredentials>('n8nApi');
@@ -258,16 +231,28 @@ export class WaitForExecutions implements INodeType {
 		};
 
 		while (processingItems.length > 0) {
+			attempts++; // Increment global attempts
+
 			const result = await checkExecutionStatuses.call(
 				this,
 				this,
 				processingItems,
-				retryLimit,
 				executionTimeout,
 			);
 			doneItems = doneItems.concat(result.doneItems);
 			failedItems = failedItems.concat(result.failedItems);
 			processingItems = result.processingItems;
+
+			if (retryLimit !== 0 && attempts >= retryLimit && processingItems.length > 0) {
+				for (const item of processingItems) {
+					item.json.execution_output = {
+						error: `Exceeded global retry limit of ${retryLimit}. Attempts: ${attempts}`,
+					};
+					failedItems.push(item);
+				}
+				processingItems = [];
+				break;
+			}
 
 			if (processingItems.length > 0) {
 				await new Promise((resolve) => {
