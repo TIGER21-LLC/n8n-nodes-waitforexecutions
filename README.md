@@ -53,7 +53,7 @@ For more details, see the [n8n Community Nodes documentation](https://docs.n8n.i
 
 1. **Trigger sub-workflows** using the "Execute Sub-Workflow" node with "Wait for Completion" set to false.
 2. **Pass execution IDs** to the WaitForExecutions node:
-   - You can provide `executionId` directly in the item's JSON (`item.json.executionId`).
+   - You can provide `execution_id` directly in the item's JSON (`item.json.execution_id`).
    - If not provided, the node will look for `item.metadata.subExecution.executionId` which is where "Execute Sub-workflow" node places the executionId.
 3. **Configure retry and timeout** parameters as needed.
 4. **Connect outputs**:
