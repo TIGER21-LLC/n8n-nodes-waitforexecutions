@@ -4,7 +4,7 @@ on:
     types: [published]
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: warp-ubuntu-latest-x64-2x
     permissions:
       contents: read
       id-token: write
