@@ -1,0 +1,24 @@
+# Copy to .github/workflows/security.yml. Dependabot (github-actions) bumps the pinned SHA.
+name: security
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  schedule:
+    - cron: "17 6 * * 1" # weekly, Monday 06:17 UTC: full-history Gitleaks scan
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  security:
+    uses: TIGER21-LLC/security-workflows/.github/workflows/security-scan.yml@f92d7e7cd5bb251d2c9b1c42ed27e5ac2088da0a # v0.3.0
+    secrets: # only the three Dependency-Track upload secrets, by name
+      DEPENDENCY_TRACK_UPLOAD_API_KEY: ${{ secrets.DEPENDENCY_TRACK_UPLOAD_API_KEY }}
+      DEPENDENCY_TRACK_ACCESS_CLIENT_ID: ${{ secrets.DEPENDENCY_TRACK_ACCESS_CLIENT_ID }}
+      DEPENDENCY_TRACK_ACCESS_CLIENT_SECRET: ${{ secrets.DEPENDENCY_TRACK_ACCESS_CLIENT_SECRET }}
+    with:
+      fail_on: none # report-only for now; delete this line to fail the run on Critical findings
+      # image: ghcr.io/tiger21-llc/<app>:<tag>  # optional, must be pullable by the runner
